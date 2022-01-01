@@ -1,0 +1,176 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Asking the question
+
+What are you looking for? What is the hypothesis or question that you are trying to answer with this dataset?
+For this data set for example, are air pollution levels lower now then they were before? 
+
+# Getting the data for 1999
+
+The dataset was downloaded from the github repository of the course, and it is in txt format
+
+Let's read the dataframe and show the first lines
+```{r, paged.print=FALSE}
+pm0 <- read.table(file = "RD_501_88101_1999-0.txt", header = FALSE, sep = "|", na.strings = "", comment.char = "#")
+
+head(pm0)
+```
+Getting the name of the columns
+
+```{r, , paged.print=FALSE}
+#Reading the first line of the file
+cnames <- readLines("RD_501_88101_1999-0.txt", 1)
+#Spliting the names by the given pattern that is fixed repeated
+cnames <- strsplit(cnames, "|", fixed = TRUE)
+#Assigning it for the dataframe columns
+#Making the names well fitted for column names, since the last ones had spaces in between
+names(pm0) <- make.names(cnames[[1]])
+
+```
+
+
+```{r}
+x0 <- pm0$Sample.Value
+suma<-summary(x0)
+```
+
+```{r}
+#Calculating the proportion of missing values
+mean(is.na(x0))
+```
+### Getting data for 2012
+
+```{r, paged.print=FALSE}
+pm1 <- read.table(file = "RD_501_88101_2012-0.txt", header = FALSE, sep = "|", na.strings = "", comment.char = "#")
+
+head(pm1)
+```
+```{r}
+#Seeing the dimensions
+print(c("Dimensions", dim(pm1)))
+
+names(pm1) <- make.names(cnames[[1]])
+x1 <- pm1$Sample.Value
+```
+
+### First comparison between the data
+
+```{r}
+summary(x0)
+summary(x1)
+```
+### Starting with the visual Representation
+
+```{r}
+boxplot(x0, x1)
+```
+We can see that both that are right skewed. But let's improve the scale for seeing this boxplots
+```{r}
+boxplot(log10(x0), log10(x1))
+
+```
+
+### Issues with negative numbers
+
+Note how important is to know how the data was collected and what were the procedures. To calculate the amount of dust or pollution in the air, they use a filter, and then they weight the dust that the filter collected. Knowing that, there was not supposed to exist negative values. Let's see what is happening
+
+```{r}
+negative <- x1 < 0
+sum(negative, na.rm = TRUE)
+mean(negative, na.rm = TRUE)
+```
+
+### Converting the dates into a date object
+
+Let's start by converting the dates into a object date.
+
+```{r}
+#Converting the dates into object dates
+dates <- pm1$Date
+dates <- as.Date(as.character(dates), "%Y%m%d")
+
+#Plotting the histogram, and showing the format to display the x axisx
+hist(dates, "month", format = "%b")
+
+hist(dates[negative], "month", format = "%b")
+```
+
+### Analysing a spefic location
+
+```{r}
+#Subsetting the data that we want
+site0 <- unique(subset(pm0, State.Code == 36, c(County.Code, Site.ID)))
+site1 <- unique(subset(pm1, State.Code == 36, c(County.Code, Site.ID)))
+
+#Pasting the information together
+site0 <- paste(site0[, 1],site0[, 2], sep = ".")
+site1 <- paste(site1[, 1],site1[, 2], sep = ".")
+
+#Look that they are different, so to compare both, we need the intersection between the two vectors of places
+str(site1)
+str(site0)
+both <- intersect(site0, site1)
+```
+Getting only the data from New York
+
+```{r}
+pm0$county.site <- with(pm0, paste(County.Code, Site.ID, sep = "."))
+pm1$county.site <- with(pm1, paste(County.Code, Site.ID, sep = "."))
+cnt0 <- subset(pm0, State.Code == 36 & county.site %in% both)
+cnt1 <- subset(pm1, State.Code == 36 & county.site %in% both)
+```
+
+```{r}
+#Number of observations in each of the dataframes
+sapply(split(cnt0, cnt0$county.site), nrow)
+sapply(split(cnt1, cnt1$county.site), nrow)
+```
+
+```{r}
+pm1sub <- subset(pm1, State.Code == 36 & County.Code == 63 & Site.ID == 2008)
+pm0sub <- subset(pm0, State.Code == 36 & County.Code == 63 & Site.ID == 2008)
+
+```
+
+### Now, let's plot the series as a time series
+
+```{r}
+dates1 <- as.Date(as.character(pm1sub$Date), format = "%Y%m%d")
+x1sub <- pm1sub$Sample.Value
+plot(dates1, x1sub)
+
+dates0 <- as.Date(as.character(pm0sub$Date), format = "%Y%m%d")
+x0sub <- pm0sub$Sample.Value
+plot(dates0, x0sub)
+```
+### Plotting them together
+```{r}
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+limits <- range(x0sub, x1sub, na.rm = T)
+plot(dates0, x0sub, pch = 20, ylim= limits)
+abline(h = median(x0sub, na.rm = TRUE))
+plot(dates1, x1sub, pch = 20, ylim= limits)
+abline(h = median(x1sub, na.rm = TRUE))
+```
+### Calculating the mean for State
+```{r}
+mn0 <- with(pm0, tapply(Sample.Value, State.Code, mean, na.rm = T))
+summary(mn0)
+mn1 <- with(pm1, tapply(Sample.Value, State.Code, mean, na.rm = T))
+summary(mn1)
+```
+```{r echo=TRUE}
+d0 <- data.frame(state = names(mn0), mean = mn0)
+d1 <- data.frame(state = names(mn1), mean = mn1)
+merg <- merge(d0, d1, by = "state")
+
+par(mfrow = c(1, 1))
+with(merg, plot(rep(1999, 52), merg[, 2], xlim = c(1998, 2013)))
+with(merg, points(rep(2012, 52), merg[, 3]))
+segments(rep(1999, 52), merg[,2], rep(2012, 52), merg[, 3])
+```
+
+
